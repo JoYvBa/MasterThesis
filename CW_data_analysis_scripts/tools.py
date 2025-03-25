@@ -208,7 +208,7 @@ def cleanup_rain(file_path):
     
     return raindata
 
-def plot_compound(dataframe, locations, compounds, rename = None, normalize = False, plot_type = "line", ylimit = False, **kwargs):
+def plot_compound(dataframe, locations, compounds, rename = None, normalize = False, compensate_dilution = False, plot_type = "line", ylimit = False, **kwargs):
     """ Plot contaminant concentrations for each location from a dataframe.
     
     Parameters
@@ -235,7 +235,17 @@ def plot_compound(dataframe, locations, compounds, rename = None, normalize = Fa
     # Influent is the same for each wetland, thus divide by it to normalize data.
     if normalize:
         plot_frame = plot_frame.div(plot_frame["INF"], axis = 0)
-        
+    
+    if compensate_dilution:
+        if not normalize:
+            comp_chlor = plot_frame.div(plot_frame["INF"], axis = 0)
+            plot_frame = plot_frame.div(comp_chlor.loc["chloride"])
+        else:
+            plot_frame = plot_frame.div(plot_frame.loc["chloride"])
+    
+    if not normalize:
+        plot_frame = plot_frame.div(1000)
+    
     # Select requested locations and compounds
     plot_frame = plot_frame[locations].loc[compounds].T
         
@@ -250,7 +260,7 @@ def plot_compound(dataframe, locations, compounds, rename = None, normalize = Fa
     # Generate list of each unique unit in the plot.
     units = list(set(plot_units.tolist()))
 
-    plt.rcParams["figure.dpi"] = 300
+    plt.rcParams["figure.dpi"] = 600
 
     # If the compounds to be plotted have two different units, they will be plotted
     # on seperate y-axis.
@@ -279,10 +289,74 @@ def plot_compound(dataframe, locations, compounds, rename = None, normalize = Fa
 
     return plot_frame, ax
 
+def plot_compound_combi(dataframe, locations, compounds, ax,
+                        rename = None,
+                        normalize = False,
+                        compensate_dilution = False,
+                        ylimit = False,
+                        **kwargs):
+    """ Plot contaminant concentrations for each location from a dataframe.
+    
+    Parameters
+    ----------
+    dataframe : pd.DataFrame
+        Dataframe containing compound concentrations for each sample location.
+    locations : list
+        List with the name of each sample location to be plotted.
+    compounds : list
+        List with the name of each compound to be plotted.
+    normalize : bool
+        Flag that normalizes the data to the input concentration.
+    **kwargs : 
+        Keyword arguments to be passed to df.plot()
+
+    Returns
+    -------
+    ax : Line plot of requested parameters.
+
+    """
+    
+    plot_frame = dataframe.drop(columns = "unit", axis=0)
+    
+    # Influent is the same for each wetland, thus divide by it to normalize data.
+    if normalize:
+        plot_frame = plot_frame.div(plot_frame["INF"], axis = 0)
+    
+    if compensate_dilution:
+        if not normalize:
+            comp_chlor = plot_frame.div(plot_frame["INF"], axis = 0)
+            plot_frame = plot_frame.div(comp_chlor.loc["chloride"])
+        else:
+            plot_frame = plot_frame.div(plot_frame.loc["chloride"])
+    
+    if not normalize:
+        plot_frame = plot_frame.div(1000)
+    
+    # Select requested locations and compounds
+    plot_frame = plot_frame[locations].loc[compounds].T
+        
+    # Keep information of units of plotted compounds
+    plot_units = dataframe["unit"].loc[compounds]
+    
+    if rename is not None:
+        rename_dict = dict(zip(compounds, rename))
+        plot_frame.rename(rename_dict, axis = 1, inplace = True)
+        plot_units.rename(rename_dict, axis = 0, inplace = True)
+    
+    # Generate list of each unique unit in the plot.
+    units = list(set(plot_units.tolist()))
+
+    plt.rcParams["figure.dpi"] = 600
+
+    # If the compounds to be plotted have two different units, they will be plotted
+    # on seperate y-axis.
+
+    unit = units[0]
+    plot_frame.plot.line(ax = ax, **kwargs)
 
 def plot_redox(df_redox, redox_nodes, start_date, end_date,
-               raindata = False, resample_rain = False, tempdata = False, temp_nodes = None,
-               ylimit_redox = False, legend_pos = (0.9, 1)):
+               raindata = False, resample_rain = False, tempdata = False, temp_nodes = None, colors = None,
+               ylimit_redox = False, legend_pos = (0.9, 1), **kwargs):
     """ Plot redox potential and optionally rainfall data for selected nodes in a timeframe.
     
 
@@ -315,7 +389,7 @@ def plot_redox(df_redox, redox_nodes, start_date, end_date,
     mask = (df_redox.index > start_date) & (df_redox.index <= end_date)
     df_redox_plot = df_redox[mask]
 
-    fig, ax1 = plt.subplots(figsize=(8, 6), dpi=300)
+    fig, ax1 = plt.subplots(figsize=(10, 7), dpi=600)
 
     # If rainfall data is provided, it will be plotted alongside the redox data.
     if isinstance(raindata, pd.DataFrame):
@@ -334,7 +408,8 @@ def plot_redox(df_redox, redox_nodes, start_date, end_date,
         # Twinning the x-axis allows for a second y-axis.
         ax2 = ax1.twinx()
         ax2.fill_between(raindata_plot.index, raindata_plot["Rain - mm"], color='blue', alpha=0.5, label = f"Rainfall per {resample_rain}")  
-        ax2.set_ylabel("Rainfall [mm]")
+        ax2.set_ylabel("Rainfall [mm]", fontsize = 20)
+        ax2.tick_params(labelsize = 16, which = "both")
     # If no raindata is provided and there is temperature data provided, it will be plotted alongside the redox data.
     if isinstance(tempdata, pd.DataFrame) and raindata == False:
         mask = (tempdata.index > start_date) & (tempdata.index <= end_date)
@@ -343,22 +418,25 @@ def plot_redox(df_redox, redox_nodes, start_date, end_date,
         
         # Twinning the x-axis allows for a second y-axis.
         ax2 = ax1.twinx()
-        ax2.plot(tempdata_plot.index, tempdata_plot["mean_temperature"], "--", color='black', label = f"Mean temperature", alpha = 0.8)  
-        ax2.set_ylabel("Temperature [ºC]")
-        
+        ax2.plot(tempdata_plot.index, tempdata_plot["mean_temperature"], "--", color='black', label = f"Mean temperature", alpha = 0.8, **kwargs)  
+        ax2.set_ylabel("Temperature [ºC]", fontsize = 20)
+        ax2.tick_params(labelsize = 16, which = "both")
         
     for i, node in enumerate(redox_nodes):
-        ax1.plot(df_redox_plot.index, df_redox_plot[node], label = f"Node {node}")
+        if colors == None:
+            ax1.plot(df_redox_plot.index, df_redox_plot[node], label = f"Node {node}", **kwargs)
+        else:
+            ax1.plot(df_redox_plot.index, df_redox_plot[node], color = colors[i], label = f"Node {node}", **kwargs)
 
-    ax1.set_xlabel("Time")
-    ax1.set_ylabel("Redox potential [mV]")
+    ax1.set_xlabel("Time", fontsize = 20)
+    ax1.set_ylabel("Redox potential [mV]", fontsize = 20)
 
 
     try:
-        fig.legend(bbox_to_anchor=legend_pos)
+        fig.legend(bbox_to_anchor=legend_pos, fontsize = 16)
     except:
         print("Invalid legend_pos, used plot default instead.")
-        fig.legend()
+        fig.legend(fontsize = 14)
     
     if ylimit_redox != False:
         try:
@@ -374,8 +452,17 @@ def plot_redox(df_redox, redox_nodes, start_date, end_date,
     ax1.xaxis.set_minor_locator(mdates.WeekdayLocator())
     ax1.xaxis.set_minor_formatter(mdates.DateFormatter('%d'))
     ax1.tick_params(axis='x', which='minor', length=4, width=1)
-
+    
+    ax1.tick_params(labelsize = 16, which = "both")
+    ax1.tick_params(axis ='x', which = "major", length=0, width = 0, pad = 25)
+    if isinstance(tempdata, pd.DataFrame) or isinstance(raindata, pd.DataFrame):
+        ax2.tick_params(labelsize = 16)
+    
     fig.tight_layout()
+    if isinstance(tempdata, pd.DataFrame) or isinstance(raindata, pd.DataFrame):
+        return(ax1, ax2)
+    else:
+        return(ax1)
 
 
 def plot_temp(df_temp, temp_nodes, start_date, end_date, ylimit = False, legend_pos = (1.1, 1)):
@@ -406,7 +493,7 @@ def plot_temp(df_temp, temp_nodes, start_date, end_date, ylimit = False, legend_
     mask = (df_temp.index > start_date) & (df_temp.index <= end_date)
     df_temp = df_temp[mask]
     
-    fig, ax = plt.subplots(figsize=(8, 6), dpi=300)
+    fig, ax = plt.subplots(figsize=(14, 10), dpi=300)
     
     for i, points in enumerate(temp_nodes):
         ax.plot(df_temp.index, df_temp[points], label = points)
@@ -418,15 +505,12 @@ def plot_temp(df_temp, temp_nodes, start_date, end_date, ylimit = False, legend_
             print("ylimits is not of the correct format and is thus ignored.")
             
     ax.set_xlabel('Date')
-    ax.set_ylabel('Temperature (ºC)')
-    
-    try:
-        fig.legend(bbox_to_anchor=legend_pos, title = 'temp node')
-    except:
-        print("Invalid legend_pos, used plot default instead.")
-        fig.legend(bbox_to_anchor=(1.1, 1), title = 'temp node')
+    ax.set_ylabel('Temperature (ºC)', fontsize = 18)
 
     # Modify axis ticks with the goal to make it more readable.    
+    ax.xaxis.set_major_locator(mdates.MonthLocator())
+    ax.xaxis.set_major_formatter(mdates.DateFormatter('%b-%Y'))
+    ax.set_xlabel("Time", fontsize = 18)
     ax.xaxis.set_major_locator(mdates.MonthLocator())
     ax.xaxis.set_major_formatter(mdates.DateFormatter('%b-%Y'))
     ax.tick_params(axis='x', rotation=0, pad=15)
@@ -435,7 +519,45 @@ def plot_temp(df_temp, temp_nodes, start_date, end_date, ylimit = False, legend_
     ax.xaxis.set_minor_formatter(mdates.DateFormatter('%d'))
     ax.tick_params(axis='x', which='minor', length=4, width=1)
     
-    fig.tight_layout()
+    ax.tick_params(labelsize = 16, which = "both")
+    ax.tick_params(axis ='x', which = "major", length=0, width = 0, pad = 25)
+    plt.legend(fontsize = 18)
+    
+def plot_rain(raindata,
+              resample_rain,
+              start_date,
+              end_date,
+              **kwargs
+              ):
+    mask = (raindata.index > start_date) & (raindata.index <= end_date)
+    raindata_plot = raindata[mask]
+    if isinstance(resample_rain, str):
+        try:
+            raindata_plot = raindata_plot.resample(resample_rain).sum()
+        except:
+            print("Invalid time input for resampling. Defaulted to days.")
+            print("Examples of valid entries; '1h' for 1 hour, '300min' for 300 minutes, '2D' for 2 days and 'W' for a week.")
+            raindata_plot = raindata_plot.resample("D").sum()
+    else:
+        resample_rain = "15min"
+        
+    fig, ax1 = plt.subplots(figsize=(14, 6), dpi=600)
+    # Twinning the x-axis allows for a second y-axis.
+
+    ax1.fill_between(raindata_plot.index, raindata_plot["Rain - mm"], color='blue', alpha=0.5, label = f"Rainfall per {resample_rain}")  
+    ax1.set_ylabel("Rainfall [mm]", fontsize = 18)
+    ax1.set_xlabel("Time", fontsize = 18)
+    ax1.xaxis.set_major_locator(mdates.MonthLocator())
+    ax1.xaxis.set_major_formatter(mdates.DateFormatter('%b-%Y'))
+    ax1.tick_params(axis='x', rotation=0, pad=15)
+
+    ax1.xaxis.set_minor_locator(mdates.WeekdayLocator())
+    ax1.xaxis.set_minor_formatter(mdates.DateFormatter('%d'))
+    ax1.tick_params(axis='x', which='minor', length=4, width=1)
+    
+    ax1.tick_params(labelsize = 16, which = "both")
+    ax1.tick_params(axis ='x', which = "major", length=0, width = 0, pad = 25)
+    plt.legend(fontsize = 18)
 
 def plot_compound_redox(df_redox,
                         df_compound,
@@ -541,6 +663,74 @@ def plot_compound_redox(df_redox,
         ax1.set_ylabel("Concentration [µg/L]")
     fig.legend(bbox_to_anchor = legend_pos)
     return(fig, ax1, ax2)
+
+def plot_time_compound(dataframe,
+                       locations,
+                       compounds,
+                       rename = None,
+                       normalize = False,
+                       compensate_dilution = False,
+                       plot_type = "line",
+                       ylimit = False,
+                       **kwargs
+                        ):
+    """ Plot contaminant concentrations for each location from a dataframe.
+    
+    Parameters
+    ----------
+    dataframe : pd.DataFrame
+        Dataframe containing compound concentrations for each sample location.
+    locations : list
+        List with the name of each sample location to be plotted.
+    compounds : list
+        List with the name of each compound to be plotted.
+    normalize : bool
+        Flag that normalizes the data to the input concentration.
+    **kwargs : 
+        Keyword arguments to be passed to df.plot()
+
+    Returns
+    -------
+    ax : Line plot of requested parameters.
+
+    """
+
+    plot_frame = dataframe.drop(columns = "unit", axis=0)
+    
+    # Influent is the same for each wetland, thus divide by it to normalize data.
+    if normalize:
+        plot_frame = plot_frame.div(plot_frame["INF"], axis = 0)
+    
+    if compensate_dilution:
+        plot_frame = plot_frame.div(plot_frame.loc["chloride"])
+    
+    # Select requested locations and compounds
+    plot_frame = plot_frame[locations].loc[compounds].T
+        
+    # Keep information of units of plotted compounds
+    plot_units = dataframe["unit"].loc[compounds]\
+        
+    print(plot_frame.head)
+    
+    if rename is not None:
+        rename_dict = dict(zip(compounds, rename))
+        plot_frame.rename(rename_dict, axis = 1, inplace = True)
+
+    
+    plt.rcParams["figure.dpi"] = 300
+
+    plt.plot(plot_frame[location_dictionary[locations]])
+    
+    unit = list(set(plot_units.tolist()))
+        
+    if normalize:
+        plt.ylabel("C/C0")
+    else:
+        plt.ylabel(f"Concentration [{unit}]")
+        
+    plt.xlabel("Measurement locations")
+    
+    plt.legend()
 
 def plot_multi_compound(dataframe_list,
                         compound,
